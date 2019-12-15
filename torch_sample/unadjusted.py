@@ -69,6 +69,7 @@ class ULD(Sampler):
               (1 + torch.exp(-2*gam*t) - 2*torch.exp(-gam*t))/gam],
              [(1 + torch.exp(-2*gam*t) - 2*torch.exp(-gam*t))/gam,
               1 - torch.exp(-2*gam*t)]])
+        cov = cov/self.c_2.double()
         self.chol_cov = torch.cholesky(cov).float()
 
     def transition(self, closure=None):
@@ -93,9 +94,9 @@ class ULD(Sampler):
         with torch.no_grad():
             for m, p in zip(self.momentums, self.params):
                 noise = (self.chol_cov @ torch.randn(2, p.nelement())).reshape([2] + list(p.shape))
-                p += self.c_2 * m - (self.t - self.c_2)/self.gam * p.grad + noise[0]
+                p += self.c_2 * m - (self.t - self.c_2)/(self.gam * self.c_2) * p.grad + noise[0]
                 m *= self.c_1
-                m -= self.c_2 * p.grad
+                m -= (self.c_2/self.c_2) * p.grad
                 m += noise[1]
 
         return nlp
