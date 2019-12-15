@@ -36,8 +36,8 @@ class LD(Sampler):
 
         with torch.no_grad():
             for p in self.params:
-                p -= (self.t * p.grad -
-                      torch.sqrt(2 * self.t) * torch.randn_like(p.grad))
+                p -= self.t * p.grad
+                p += torch.sqrt(2 * self.t) * torch.randn_like(p.grad)
 
         return nlp
 
@@ -60,16 +60,16 @@ class ULD(Sampler):
         self.t = t
         self.gam = gam
 
-        self.c_1 = torch.exp(-self.gam*self.t)
-        self.c_2 = (1 - self.c_1)/self.gam
         t = torch.tensor(t, dtype=torch.float64)
         gam = torch.tensor(gam, dtype=torch.float64)
+        self.c_1 = torch.exp(-gam*t).float()
+        self.c_2 = ((1 - self.c_1)/gam).float()
         cov = torch.tensor(
             [[2*(t*gam + 2*torch.exp(-gam*t) - 0.5*torch.exp(-2*gam*t) - 3/2)/gam**2,
               (1 + torch.exp(-2*gam*t) - 2*torch.exp(-gam*t))/gam],
              [(1 + torch.exp(-2*gam*t) - 2*torch.exp(-gam*t))/gam,
               1 - torch.exp(-2*gam*t)]])
-        self.chol_cov = torch.cholesky(cov).to(torch.float32)
+        self.chol_cov = torch.cholesky(cov).float()
 
     def transition(self, closure=None):
         """Runs one iteration of the underdamped Langevin dynamics algorithm.
@@ -93,9 +93,10 @@ class ULD(Sampler):
         with torch.no_grad():
             for m, p in zip(self.momentums, self.params):
                 noise = (self.chol_cov @ torch.randn(2, p.nelement())).reshape([2] + list(p.shape))
-                p += self.c_2 * m - (self.t - self.c_2) * p.grad + noise[0]
+                p += self.c_2 * m - (self.t - self.c_2)/self.gam * p.grad + noise[0]
                 m *= self.c_1
-                m -= self.c_2 * p.grad + noise[1]
+                m -= self.c_2 * p.grad
+                m += noise[1]
 
         return nlp
 
